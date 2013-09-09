@@ -1,0 +1,11 @@
+Package: NewProductForecasting
+Title: 
+Version: 0.1
+Author: Sandeep Conoor <sandeep.conoor@gmail.com>
+Maintainer: Sandeep Conoor <sandeep.conoor@gmail.com>
+Description: An implementation of New Product Forecasting models
+Depends:
+    R (>= 3.0.0), bayesm, proto
+License: GPL-2
+Suggests: 
+
