@@ -19,7 +19,12 @@ simExpGammaTrial <- function(sample_size, horizon, simPars, seed = 1234) {
 		data[[i]] <- data.table(id = i, time = time, y = y)
 	}
 	data <- rbindlist(data)
-	list(sample_size = sample_size, potential = rep(1, sample_size), horizon = horizon, simPars = simPars, indPars = list(r = r, alpha = alpha), data = data)
+	list(sample_size = sample_size, 
+       potential = rep(1, sample_size), 
+       horizon = horizon, 
+       simPars = simPars, 
+       indPars = list(r = r, alpha = alpha), 
+       data = data)
 }
 
 plotSimData <- function(lst) {
@@ -36,7 +41,7 @@ plotSimData <- function(lst) {
 
 gibbsSampler1 <- function(Data, Priors, Mcmc) {
 	# Sampler for one unit
-	require(coda)
+   	require(coda)
 	default.prior <- list(beta = c(0), sigmasq = c(10))
 	if (missing(Priors))
 		Priors <- list(r = default.prior, alpha = default.prior)
@@ -237,17 +242,18 @@ sample.alpha <- function(alpha, r, alphabar, sigmasq_alpha, rwscale_alpha, ...) 
 		list(alpha = alpha, reject = TRUE)
 }
 
-loglikelihood <- function(pars, y, time, potential) {
-	cumcurve <- function(tau) (1 - (alpha / (alpha + tau))^r)
-	r <- pars[["r"]]
-	alpha <- pars[["alpha"]]
-	incy <- diff(c(0, y))
-	cdf1 <- cumcurve(time)
-	cdf2 <- cumcurve(time - 1)
-	cdf3 <- cumcurve(max(time))
+cdf <- function(pars, tau) {
+  r <- pars[["r"]]
+  alpha <- pars[["alpha"]]
+  (1 - (alpha / (alpha + tau))^r)
+}
 
-	term1 <- sum(y * log(cdf1 - cdf2))
-	term2 <- (potential - max(y)) * log(1 - cdf3)
+
+loglikelihood <- function(pars, y, time, potential) {
+	incy <- diff(c(0, y))
+	cdf1 <- cdf(pars, time)
+	cdf2 <- cdf(pars, time - 1)
+	cdf3 <- cdf(pars, max(time))
 
 	ll <- sum(incy * log(cdf1 - cdf2)) + (potential - sum(incy)) * log(1 - cdf3)
 	ll

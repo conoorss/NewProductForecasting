@@ -2,7 +2,9 @@ source("try-1.r")
 set.seed(10000)
 
 if (!file.exists("simres-1.rdata")) {
-	simres <- simExpGammaTrial(1000, 200, list(rbar = -4, sigmasq_r = 0.5, alphabar = 3, sigmasq_alpha = 0.5))
+	simres <- simExpGammaTrial(1000, 200, 
+                             list(rbar = -4, sigmasq_r = 0.5, 
+                                  alphabar = 3, sigmasq_alpha = 0.5))
 	save(simres, file = "simres-1.rdata")
 } else {
 	load("simres-1.rdata")
@@ -42,14 +44,19 @@ mle.test <- optim(c(-1, -1), objfn, y = y1, time = time1, control = list(fnscale
 
 
 mle.test <- mle1(simres)
-conv <- do.call("c", lapply(mle.test, function(x) x$convergence)
-estpars <- do.call("rbind", lapply(mle.test, function(x) x$par))
+conv <- do.call("c", lapply(mle.test, function(x) x$convergence))
+estpars <- do.call("rbind", lapply(mle.test, function(x) x$par)) 
 estpars <- exp(estpars)
-colnames(estpars) <- c("r.hat", "alpha.hat")
+colnames(estpars) <- c("r.hat", "alpha.hat")                                
 
-par(mfrow = c(2,1))
-plot(simres$indPars$r, estpars[,"r.hat"]); abline(a = 0, b = 1)
-plot(simres$indPars$alpha, estpars[,"alpha.hat"]); abline(a = 0, b = 1)
+fitplot <- function(x, y, param) { 
+  plot(x, y, main = paste("Fit of", param), xlab = "Obs", ylab = "Est", pch = ".", cex = 3)
+  abline(a = 0, b = 1, col = 2)
+}
+
+par(mfrow = c(2,1)) 
+fitplot(simres$indPars$r, estpars[,"r.hat"])
+fitplot(simres$indPars$alpha, estpars[,"alpha.hat"])
 par(mfrow = c(1,1))
 
 

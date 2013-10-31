@@ -2,7 +2,10 @@ source("try-2.r")
 set.seed(10000)
 
 if (!file.exists("simres-2.rdata")) {
-	simres <- simExpGammaTrial(1000, 200, list(p0bar = -2, sigmasq_p0 = 0.5, rbar = -4, sigmasq_r = 0.5, alphabar = 3, sigmasq_alpha = 0.5))
+	simres <- simExpGammaTrial(1000, 200, 
+                             list(p0bar = -2, sigmasq_p0 = 0.5, 
+                                  rbar = -4, sigmasq_r = 0.5, 
+                                  alphabar = 3, sigmasq_alpha = 0.5))
 	save(simres, file = "simres-2.rdata")
 } else {
 	load("simres-2.rdata")
@@ -11,7 +14,8 @@ if (!file.exists("simres-2.rdata")) {
 # Test the likelihood function
 
 objfn <- function(params, y, time) {
-	params <- exp(params)
+	params[-1] <- exp(params[-1])
+  params[1] <- invlogit(params[1])
 	names(params) <- c("p0", "r", "alpha")
 	ll <- loglikelihood(params, y, time, 1)
 	#print(ll)
@@ -48,10 +52,15 @@ estpars[,-1] <- exp(estpars[,-1])
 estpars[,1] <- invlogit(estpars[,1])
 colnames(estpars) <- c("p0.hat", "r.hat", "alpha.hat")
 
-par(mfrow = c(3,1))
-plot(simres$indPars$p0, estpars[,"p0.hat"]); abline(a = 0, b = 1)
-plot(simres$indPars$r, estpars[,"r.hat"]); abline(a = 0, b = 1)
-plot(simres$indPars$alpha, estpars[,"alpha.hat"]); abline(a = 0, b = 1)
+fitplot <- function(x, y, param) { 
+  plot(x, y, main = paste("Fit of", param), xlab = "Obs", ylab = "Est", pch = ".", cex = 3)
+  abline(a = 0, b = 1, col = 2)
+}
+
+par(mfrow = c(3,1)) 
+fitplot(simres$indPars$p0, estpars[,"p0.hat"], "p0")
+fitplot(simres$indPars$r, estpars[,"r.hat"], "r")
+fitplot(simres$indPars$alpha, estpars[,"alpha.hat"], "alpha")
 par(mfrow = c(1,1))
 
 
