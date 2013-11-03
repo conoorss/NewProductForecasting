@@ -6,8 +6,6 @@
 #	log(alpha) ~ N(alphabar, sigmasq_alpha)
 #	log(r) ~ N(rbar, sigmasq_r)
 #
-
-source("runireg.r")
 	
 invlogit <- function(x) exp(x) / (1 + exp(x))
 
@@ -270,14 +268,27 @@ sample.alpha <- function(alpha, r, alphabar, sigmasq_alpha, rwscale_alpha, ...) 
 		list(alpha = alpha, reject = TRUE)
 }
 
+cdf <- function(pars, time, mod = NULL) {
+  p0 <- pars[["p0"]]
+  r <- pars[["r"]]
+  alpha <- pars[["alpha"]]
+  beta <- pars[["beta"]]
+  
+  if (is.null(mod))
+    A <- time
+  else if (mod == "lag")
+    A <- time - 1
+  else
+    A <- max(time)
+  
+  p0 * (1 - (alpha / (alpha + A))^r)  
+}
+
 loglikelihood <- function(pars, y, time, potential) {
-	cumcurve <- function(tau) (1 - (alpha / (alpha + tau))^r)
-	r <- pars[["r"]]
-	alpha <- pars[["alpha"]]
 	incy <- diff(c(0, y))
-	cdf1 <- cumcurve(time)
-	cdf2 <- cumcurve(time - 1)
-	cdf3 <- cumcurve(max(time))
+	cdf1 <- cdf(pars, time)
+  cdf2 <- cdf(pars, time, "lag")
+  cdf3 <- cdf(pars, time, "max")
 
 	ll <- sum(incy * log(cdf1 - cdf2)) + (potential - sum(incy)) * log(1 - cdf3)
 	ll

@@ -6,8 +6,6 @@
 #	log(r) ~ N(rbar, sigmasq_r)
 #
 
-source("runireg.r")
-
 simExpGammaTrial <- function(sample_size, horizon, simPars, seed = 1234) {
 	require(data.table)
 	r <- exp(rnorm(sample_size, mean = simPars$rbar, sd = sqrt(simPars$sigmasq_r)))

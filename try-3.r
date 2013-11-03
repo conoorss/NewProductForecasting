@@ -62,14 +62,15 @@ cdf <- function(pars, X, mod = NULL) {
   beta <- pars[["beta"]]
   
   A <- exp(X %*% beta)
+  
   if (is.null(mod))
     A <- cumsum(A)
   else if (mod == "lag")
     A <- cumsum(c(0, head(A, -1)))
-  else
+  else 
     A <- tail(cumsum(A), 1)
   
-  p0 * (1 - (alpha / (alpha + A))^r)  
+  p0 * (1 - (alpha / (alpha + A))^r)
 }
 
 loglikelihood <- function(pars, y, X, potential) {	

@@ -33,38 +33,64 @@ mle1 <- function(lst){
 	res
 }
 
+test_oneid <- function(idval, sim, print = TRUE, ...) {
+  p0 <- sim$indPars$p0[idval]
+  r <- sim$indPars$r[idval]
+  alpha <- sim$indPars$alpha[idval]
+  y <- sim$data[id == idval, y]
+  time <- sim$data[id == idval, time]
+  
+  # Calculate likelihood at 'true' parameter values
+  ll <- loglikelihood(list(p0 = p0, r = r, alpha = alpha, beta = beta), y = y, time = time, 1)
+  
+  # Run MLE 
+  mlstart <- rep(-1, 3)
+  mle <- optim(mlstart, objfn, y = y, time = time, control = list(fnscale = -1, maxit = 20000), ...)
+  
+  # Create list of vectors with comparisons
+  complist <- list(loglik = c(ll, mle$value), 
+                   p0 = c(p0, invlogit(mle$par[1])), 
+                   r = c(r, exp(mle$par[2])), 
+                   alpha = c(alpha, exp(mle$par[3])))
+      
+  # Print comparisons
+  if (print) {
+    oopt <- options()
+    options(digits = 3)
+    on.exit(options(oopt))
+    compmat <- do.call("rbind", complist)
+    colnames(compmat) <- c("True", "Estimate")
+    cat("==== Comparison =====\n")
+    print(compmat)
+    cat("MLE Convergence: ", mle$convergence, "\n")
+  }
+  invisible(list(complist = complist, mle = mle))
+}
 
-# Tests for first id
-p01 <- simres$indPars$p0[1]
-r1 <- simres$indPars$r[1]
-alpha1 <- simres$indPars$alpha[1]
-
-y1 <- simres$data[id == 1, y]
-time1 <- simres$data[id == 1, time]
-
-loglikelihood(c(p0 = p01, r = r1, alpha = alpha1), y = y1, time = time1, 1)
-mle.test <- optim(c(-1, -1, -1), objfn, y = y1, time = time1, control = list(fnscale = -1))
-
-mle.test <- mle1(simres)
-conv <- do.call("c", lapply(mle.test, function(x) x$convergence))
-estpars <- do.call("rbind", lapply(mle.test, function(x) x$par))
-estpars[,-1] <- exp(estpars[,-1])
-estpars[,1] <- invlogit(estpars[,1])
-colnames(estpars) <- c("p0.hat", "r.hat", "alpha.hat")
-
-fitplot <- function(x, y, param) { 
-  plot(x, y, main = paste("Fit of", param), xlab = "Obs", ylab = "Est", pch = ".", cex = 3)
+fitplot <- function(x, y, ...) {
+  plot(x, y, xlab = "True", ylab = "Estimated", pch = ".", cex = 4, ...)
   abline(a = 0, b = 1, col = 2)
 }
 
-par(mfrow = c(3,1)) 
-fitplot(simres$indPars$p0, estpars[,"p0.hat"], "p0")
-fitplot(simres$indPars$r, estpars[,"r.hat"], "r")
-fitplot(simres$indPars$alpha, estpars[,"alpha.hat"], "alpha")
-par(mfrow = c(1,1))
+test_allids <- function(sim, ...){  
+  res <- lapply(seq(sim$sample_size), test_oneid, sim = sim, print = FALSE, ...)
+  loglik <- do.call("rbind", lapply(res, function(x) x$complist$loglik))
+  p0 <- do.call("rbind", lapply(res, function(x) x$complist$p0))
+  r <- do.call("rbind", lapply(res, function(x) x$complist$r))
+  alpha <- do.call("rbind", lapply(res, function(x) x$complist$alpha))
+  mlestatus <- do.call("c", lapply(res, function(x) x$mle$convergence))
+  
+  par(mfrow = c(2,2))
+  fitplot(loglik[,1], loglik[,2], main = "Loglikelihood")
+  fitplot(p0[,1], p0[,2],main = "p0")
+  fitplot(r[,1], r[,2], main = "r")
+  fitplot(alpha[,1], alpha[,2], main = "alpha")
+  return(list(loglik = loglik, p0 = p0, r = r, alpha = alpha, mlestatus = mlestatus))
+  par(mfrow = c(1,1))
+}
 
-
-
+test_oneid(1, simres)
+testres <- test_allids(simres, method = "BFGS")
 
 
 if (FALSE) {
