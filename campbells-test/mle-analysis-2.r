@@ -10,58 +10,62 @@ objfn <- function(params, y, time) {
   ll
 }
 
-mle1 <- function(lst){
+mle_oneid <- function(dat, startvals = c(-1, -1, -1), ...) {
+  y <- dat[, ObsTrialPct]
+  time <- seq_along(y)
+  try(optim(startvals, objfn, y = y, time = time, control = list(fnscale = -1, maxit = 20000), method = "BFGS"))  
+}
+
+mle_allids <- function(lst, ...) {
   res <- vector("list", length(lst))
+  start_time <- proc.time()[3]
   for (i in seq_along(lst)) {
-    if (i %% 10 == 0) cat(i, " done \n")
-    yi <- lst[[i]][, ObsTrialPct]
-    timei <- lst[[i]][, WEEK]
-    res[[i]] <- try(optim(c(-1, -1, -1), objfn, y = yi, time = timei, control = list(fnscale = -1, maxit = 20000), method = "BFGS"))
+    if (i %% 10 == 0L) {
+      curr_time <- proc.time()[3]
+      cat(i, "ids done in ", curr_time - start_time, " secs\n")
+    }
+    res[[i]] <- mle_oneid(lst[[i]], ...)
   }
   res
 }
 
 reportpars <- function(mle) {
-   par <- mle$par
-   p0 <- invlogit(par[1])
-   r <- exp(par[2])
-   alpha <- exp(par[3])
-   list(p0 = p0, r = r, alpha = alpha)
-}
-
-curvefit <- function(mle, y, time){
-  res <- reportpars(mle)
-  fit <- cdf(res, time)
-  data.table(ObsTrialPct = y, PredTrialPct = fit)
-}
-
-##### Test likelihood and mle with one UPC
-y1 <- campdat2lst[[1]][, ObsTrialPct]
-time1 <- seq_along(y1)
-loglikelihood(c(p0 = invlogit(-1), r = exp(-1), alpha = exp(-1)), y = y1, time = time1, 1)
-mle.test <- optim(c(-1, -1, -1), objfn, y = y1, time = time1, control = list(fnscale = -1, maxit = 20000))
-
-#### Perform MLE on all UPCs
-mle.test <- mle1(campdat2lst)
-
-##### Store convergence status
-convcheck <- sapply(mle.test, function(x) if (inherits(x, "try-error")) NA else x$convergence)
-table(convcheck)
-
-##### Create model fit dataset
-modelfit <- vector("list", length(mle.test))
-for (i in seq_along(mle.test)) {
-  if (!is.na(convcheck[i])) {
-    pars <- reportpars(mle.test[[i]])
-    fit <- curvefit(mle.test[[i]], campdat2lst[[i]]$ObsTrialPct, seq_along(campdat2lst[[i]]$ObsTrialPct))
-    modelfit[[i]] <- cbind(campdat2lst[[i]], PredTrialPct = fit$PredTrialPct, p0 = pars$p0, r = pars$r, alpha = pars$alpha)
+  if (!inherits(mle, "try-error") && ("par" %in% names(mle))) {
+    par <- mle$par
+    return(list(p0 = invlogit(par[1]), r = exp(par[2]), alpha = exp(par[3])))
   } else {
-    modelfit[[i]] <- data.table()
+    return(list())
+  }   
+}
+
+curvefit <- function(mle, dat){
+  res <- reportpars(mle)
+  if (length(res)) {
+    fit <- cdf(res, seq(nrow(dat)))
+    mape <- mean(abs(fit/(dat[, ObsTrialPct] + 1e-5) - 1))
+    return(cbind(dat, PredTrialPct = fit, MAPE = mape, p0 = res$p0, r = res$r, alpha = res$alpha))
+  } else {
+    return(data.table())
   }
 }
 
+
+
+# Run MLE
+mle_oneid(campdat2lst[[1]])
+mle.test <- mle_allids(campdat2lst)
+
+# Check convergence status
+convcheck <- sapply(mle.test, function(x) if (inherits(x, "try-error")) NA else x$convergence)
+table(convcheck, useNA = "ifany")
+
+# Get model fit
+modelfit <- mapply(curvefit, mle.test, campdat2lst, SIMPLIFY = FALSE)
 modelfit <- rbindlist(modelfit)
 modelfit[,`:=`(id = NULL, acv.max = NULL, acv.range = NULL)]
+
+estpars <- modelfit[, lapply(.SD, unique), keyby = UPC, .SDcols = c("Product", "NPP_BRAND_NUM", "NPP_BRAND", "p0", "r", "alpha")]
+mapes <- modelfit[, lapply(.SD, unique), keyby = UPC, .SDcols = c("MAPE")]
 
 ##### Plot model fit
 for (i in unique(modelfit$UPC)) {
@@ -72,7 +76,4 @@ for (i in unique(modelfit$UPC)) {
 
 write.csv(modelfit, file = "UPC-level-mle-2.csv", row.names = FALSE)
 
-##### Get parameter estimates
-estpars <- modelfit[, lapply(.SD, unique), keyby = UPC, .SDcols = c("Product", "NPP_BRAND_NUM", "NPP_BRAND", "p0", "r", "alpha")]
-
-save(modelfit, estpars, file = "model-res-2.rdata")
+save(modelfit, estpars, mapes, file = "model-res-2.rdata")

@@ -32,65 +32,10 @@ objfn <- function(params, y, X) {
   ll
 }
 
-
-mle1 <- function(lst){
-  res <- vector("list", lst$sample_size)
-  for (i in seq(lst$sample_size)) {
-    if (i %% 10 == 0) cat(i, " done \n")
-    yi <- lst$data[id == i, y]
-    sel <- grep("^X", names(lst$data), value = TRUE)
-    Xi <- lst$data[id == i, sel, with = FALSE]
-    Xi <- as.matrix(Xi)
-    timei <- lst$data[id == i, time]
-    res[[i]] <- try(optim(c(-1, -1, -1, -1), objfn, y = yi, X = Xi, control = list(fnscale = -1)))
-  }
-  res
+fitplot <- function(x, y, ...) {
+  plot(x, y, xlab = "True", ylab = "Estimated", pch = ".", cex = 4, ...)
+  abline(a = 0, b = 1, col = 2)
 }
-
-reportpars <- function(mle) {
-  par <- mle$par
-  p0 <- invlogit(par[1])
-  r <- exp(par[2])
-  alpha <- exp(par[3])
-  beta <- exp(par[-(1:3)])
-  list(p0 = p0, r = r, alpha = alpha, beta = beta)
-}
-
-curvefit <- function(mle, y, X){
-  res <- reportpars(mle)
-  fit <- cdf(res, X)
-  data.table(ObsTrialPct = y, PredTrialPct = fit)
-}
-
-test_oneid <- function(sim, idval, ...) {
-  p0 <- sim$indPars$p0[idval]
-  r <- sim$indPars$r[idval]
-  alpha <- sim$indPars$alpha[idval]
-  beta <- sim$indPars$beta[idval,]
-  y <- sim$data[id == idval, y]
-  time <- sim$data[id == idval, time]
-  Xsel <- grep("^X", names(sim$data), value = TRUE)
-  X <- sim$data[id == idval, Xsel, with = FALSE]
-  X <- as.matrix(X)
-  
-  # Calculate likelihood at 'true' parameter values
-  ll <- loglikelihood(list(p0 = p0, r = r, alpha = alpha, beta = beta), y = y, X = X, 1)
-  
-  # Run MLE 
-  mlstart <- c(rep(-1, 3), rep(-1, length(beta)))
-  mle <- optim(mlstart, objfn, y = y, X = X, control = list(fnscale = -1, maxit = 20000), ...)
-  
-  # Print comparisons
-  cat("Statistic \tTrue \tEstimate\n")
-  cat("---------------------------------------\n")
-  cat("LogLik:\t", ll, "\t", mle$value, "\n")
-  cat("p0:\t", p0, "\t", invlogit(mle$par[1]), "\n")
-  cat("r:\t", r, "\t", exp(mle$par[2]), "\n")
-  cat("alpha:\t", alpha, "\t", exp(mle$par[3]), "\n")
-  cat("beta:\t", beta, "\t", exp(mle$par[-(1:3)]), "\n")
-  invisible(list(ll = ll, mle = mle))
-}
-
 
 test_oneid <- function(idval, sim, print = TRUE, ...) {
   p0 <- sim$indPars$p0[idval]
@@ -133,11 +78,6 @@ test_oneid <- function(idval, sim, print = TRUE, ...) {
   invisible(list(complist = complist, mle = mle))
 }
 
-fitplot <- function(x, y, ...) {
-  plot(x, y, xlab = "True", ylab = "Estimated", pch = ".", cex = 4, ...)
-  abline(a = 0, b = 1, col = 2)
-}
-
 test_allids <- function(sim, ...){  
   res <- lapply(seq(sim$sample_size), test_oneid, sim = sim, print = FALSE, ...)
   loglik <- do.call("rbind", lapply(res, function(x) x$complist$loglik))
@@ -160,10 +100,8 @@ test_allids <- function(sim, ...){
 }
 
 test_oneid(1, simres)
-testres <- test_allids(simres, method = "BFGS")
-
-testres1 <- test_allids(simres)
-testres2 <- test_allids(simres2)
+testres1 <- test_allids(simres, method = "BFGS")
+testres2 <- test_allids(simres2, method = "BFGS")
 
 save(testres1, testres2, file = "simtests-3.rdata")
 

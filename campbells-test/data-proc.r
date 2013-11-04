@@ -1,8 +1,12 @@
-# Process data for model runs
+# Process Campbell's data for model runs
 # 
 #
 
 ##### Read the data #####
+## Data notes:
+# Data copied from clients/Campbells/Internal Forecast Model/08_Analysis/ on hari
+# 
+
 campdat <- read.csv("UPC-level-Exponential-3.csv", nrows = 3000, stringsAsFactors = FALSE) 
 
 cc <- sapply(campdat, class)
