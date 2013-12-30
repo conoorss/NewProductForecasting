@@ -55,8 +55,8 @@ fitplot <- function(x, y, param) {
 }
 
 par(mfrow = c(2,1)) 
-fitplot(simres$indPars$r, estpars[,"r.hat"])
-fitplot(simres$indPars$alpha, estpars[,"alpha.hat"])
+fitplot(simres$indPars$r, estpars[,"r.hat"], "r")
+fitplot(simres$indPars$alpha, estpars[,"alpha.hat"], "alpha")
 par(mfrow = c(1,1))
 
 
