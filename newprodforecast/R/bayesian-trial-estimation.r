@@ -22,7 +22,7 @@ hb_trialmodel <- function(formula,
 		stop("The group argument must be a string giving the name of a column in the data argument")
 
 	# Specification of the functional form for trial model
-	tmSpec <- setTrialModelSpec(tmSpec)
+	tmSpec <- set_spec_trialmodel(tmSpec)
 	tmSpec$numCovariates <- length(attr(terms(mf$formula), "term.labels"))
 	if (!is.null(tmSpec$acvMultiplier) && tmSpec$acvMultiplier %notin% names(data))
 		stop("The acv multiplier variable in the model specification was not found in the data")

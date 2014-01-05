@@ -10,7 +10,7 @@
 #' @return A list with components "family", "p0", "acvMultiplier", "numCovariates
 #' 
 #' @export
-setTrialModelSpec <- function(lst) {
+set_spec_trialmodel <- function(lst) {
   spec <- default <- list(family = "exponential-gamma", p0 = FALSE, acvMultiplier = NULL, numCovariates = 0L)
   if (length(lst)) {
     if (is.null(names(lst)) || any(identical(names(lst), "")))
@@ -27,7 +27,7 @@ setTrialModelSpec <- function(lst) {
 }
 
 #' @export
-setRepeatModelSpec <- function(lst) {
+set_spec_repeatmodel <- function(lst) {
   spec <- default <- list(family = "exponential-gamma", acvMultiplier = NULL, numCovariates = 0L)
   if (length(lst)) {
     if (is.null(names(lst)) || any(identical(names(lst), "")))
