@@ -2,7 +2,7 @@
 "%notin%" <- Negate("%in%")
 invlogit <- function(x) exp(x) / (1 + exp(x))
 
-autocorrectModelFormula <- function(formula) {
+autocorrect_formula <- function(formula) {
   # Internal function to modify a formula to drop intercept if covariates are supplied
   tm <- terms(formula)
   numCovariates <- length(attr(tm, "term.labels"))

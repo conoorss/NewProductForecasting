@@ -10,7 +10,7 @@ hb_trialmodel <- function(formula,
 
 	cl <- match.call()
 	mf <- match.call(expand.dots = FALSE)
-	cl$formula <- mf$formula <- autocorrectModelFormula(formula)
+	cl$formula <- mf$formula <- autocorrect_formula(formula)
 
 	if (missing(formula) || !inherits(formula, "formula") || length(formula) < 3L) # Check for two sided formula
 		stop("Require a formula argument")

@@ -22,7 +22,7 @@ trialmodel <- function(formula,
 					   optimControl = list(maxit = 20000)) {
   cl <- match.call()
   mf <- match.call(expand.dots = FALSE)
-  cl$formula <- mf$formula <- autocorrectModelFormula(formula)
+  cl$formula <- mf$formula <- autocorrect_formula(formula)
 
   if (!inherits(formula, "formula") || length(formula) < 3L) # Check for two sided formula
 	  stop("Require a formula argument")
