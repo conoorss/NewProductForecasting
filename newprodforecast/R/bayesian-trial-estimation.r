@@ -50,8 +50,8 @@ hb_trialmodel <- function(formula,
 
 	if (tmSpec$family == "exponential") {
 		for (iter in seq(samples)) {
-			lambda <- mapply(datalst, params, 	
-							 lambda <- sampleLambda()
+			#lambda <- mapply(datalst, params, 	
+      lambda <- sampleLambda()
 			# sample beta
 			beta <- sampleBeta()
 			# sample Delta, Sigma
@@ -64,7 +64,7 @@ sample_lambda <- function(params, xylist, loglik, logprior, rejections, mu, Sigm
 	# Propose a new value of lambda
 	paramsProp <- params
 	paramsProp$lambda <- params$lambda + rwscale * rnorm(1)
-	loglikProp <- likelihoodTrialModel(paramsProp, xylist$y, xylist$x, acv = 1, tmSpec)
+	loglikProp <- loglik_trialmodel(paramsProp, xylist$y, xylist$x, acv = 1, tmSpec)
 	logpriorProp <- calcPrior(paramsProp$lambda, mu, sigma)
 	mhRatio <- exp(loglikProp + logpriorProp - loglik - logprior)
 	if (is.na(mhRatio) || mhratio > runif(1))
@@ -74,20 +74,34 @@ sample_lambda <- function(params, xylist, loglik, logprior, rejections, mu, Sigm
 }
 
 
-metropolis_sample <- function(params, xylist, loglik, logprior, rejections, mu, Sigma, paramName, rwscale, tmSpec) {
+metropolis_sample <- function(params, xylist, loglik, logprior, rejections, mu, Sigma, rwscale, paramName, paramIx, tmSpec) {
 	paramsProp <- params
-	k <- length(params[[paramName]]
+	k <- length(params[[paramName]])
 	paramsProp[[paramName]] <- params[[paramName]] + rwscale * rnorm(k)
+	loglikProp <- logloglik_trialmodel(paramsProp, xylist$y, xylist$x, acv = 1, tmSpec)
+	# This section needs testing for lower dimension cases and compatibility with dmvnorm
+	# Need to include dependency for dmvnorm function
+	if (length(mu) == 1L) {
+		condMean <- mu
+		condVar <- Sigma
+	} else {
+	   	condPars <- unlist(paramsProp)[-paramIx]
+		condMean <- mu[paramIx] - Sigma[paramIx, -paramIx] %*% chol2inv(chol(Sigma[-paramIx, -paramIx])) %*% (condPars - mu[-paramIx])
+		condVar <- Sigma[-paramIx, -paramIx] - Sigma[paramIx, -paramIx] %*% chol2inv(chol(Sigma[-paramIx, -paramIx])) %*% Sigma[-paramIx, paramIx]
+	}
+	logpriorProp <- logPrior(param, condMean, condVar)
+	mhRatio <- exp(loglikProp + logpriorProp - loglik - logprior)
+	if (is.na(mhRatio) || mhRatio > runif(1)) {
+		params <- paramsProp
+		loglik <- loglikProp
+		logprior <- logpriorProp
+	}
+	list(params = params, loglik = loglik, loglik = loglik)
 }
 	
+logPrior <- function(x, mu, Sigma) dmvnorm(x, mu, Sigma, log = TRUE)
 
 	
-	calcPrior <- function(param, 
-
-
-
-
-#	for (iter in seq(numIter)) {
 #		cat("Current q is: ", current_q, "\n")
 #		q <- curren_q
 #		p <- sig %*% rnorm(length(q))
