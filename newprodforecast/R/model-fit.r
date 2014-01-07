@@ -28,7 +28,7 @@ sumsqerr.trialmodel <- function(object) {
 
 insamplefit <- function(object) UseMethod("insamplefit") 
 insamplefit.trialmodel <- function(object) {
-#	groupsPresent <- all(sapply(object$estimates, is.list))
+	#	groupsPresent <- all(sapply(object$estimates, is.list))
 	groupsPresent <- !is.null(groupvar(object))
 	if (groupsPresent)
 		return(do.call("c", lapply(object$estimates, get_mape)))
