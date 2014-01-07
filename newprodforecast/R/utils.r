@@ -10,3 +10,15 @@ autocorrect_formula <- function(formula) {
 		formula[[3]] <- as.call(c(as.name("-"), list(formula[[3]]), 1))
 	formula
 }
+	
+linesep <- function(n = 60) cat(paste(rep("-", n), collapse=""), fill = TRUE)
+
+printsafe <- function(x) {
+	if (NROW(x) <= 20) {
+		print(x)
+	} else {
+		print(head(x))
+		cat("...", fill = TRUE)
+		print(tail(x))
+	}
+}

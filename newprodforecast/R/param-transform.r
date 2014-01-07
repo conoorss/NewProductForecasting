@@ -13,6 +13,12 @@ generate_vec_splitter <- function(spec) {
 	function(x) if (length(x) != length(splitvec)) stop("Length mismatch in splitter") else split(x, splitvec)
 }
 
+if (0) {
+calculate_param_ix <- function(spec) {
+	# Returns the indices of each parameter in the atomic version of the list
+}
+}
+
 generate_transforms <- function(spec) {
 	tfunc <- if (spec$p0) list(p0 = invlogit) else list()
 	tfunc <- if (!is.null(spec$acvMultiplier)) c(tfunc, list(gamma = exp)) else tfunc

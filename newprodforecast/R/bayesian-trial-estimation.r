@@ -7,15 +7,17 @@ loglik_nls <- function(params, tranforms, sigsq, y, x) {
 	# The call to cumulative_curve computes zeta
 	#
 	# params is a named list of constrained parameters
-	# sigsq is a numeric scalar
-	# y is a numeric vector
+	# sigsq is a numeric scalar (NOTE: this is the LOG of sigsq)
+	# y is a numeric vector 
 	# x is a numeric matrix
 
+	sigsq <- exp(sigsq)
 	params <- mapply(function(x, fun) fun(x), params, transforms)
 	predictor <- if (!is.null(params$beta)) drop(exp(x %*% params$beta)) else rep(1, NROW(x))
 	predictor <- cumsum(predictor)
 	tpredictor <- cumulative_curve(params, predictor, acv = 1)	
-	-sum((y - tpredictor)^2) / (2 * sigsq)
+	-sum((y - tpredictor)^2) / (2 * exp(sigsq))
+	dnorm(y, mean = tpredictor, sd = sqrt(sigsq), log = TRUE)
 }
 
 logprior_normal <- function(params, paramName, paramIx, mu, Sigma) { 
@@ -26,9 +28,9 @@ logprior_normal <- function(params, paramName, paramIx, mu, Sigma) {
 	# mu is numeric vector
 	# Sigma is a numeric Matrix
 	x <- params[[paramName]]
-	mat1 <- Sigma[paramIx, -paramIx] %*% chol2inv(chol(Sigma[-paramIx, -paramIx]))
+	mat1 <- Sigma[paramIx, -paramIx, drop = FALSE] %*% chol2inv(chol(Sigma[-paramIx, -paramIx, drop = FALSE]))
 	mu_x <- mu[paramIx] - mat1 %*% (x - mu[-paramIx])
-	Sigma_x <- Sigma[paramIx, paramIx] - mat1 %*% Sigma[-paramIx, paramIx]
+	Sigma_x <- Sigma[paramIx, paramIx, drop = FALSE] - mat1 %*% Sigma[-paramIx, paramIx, drop = FALSE]
 	dmvnorm(x, mu_x, Sigma_x, log = TRUE)	
 }
 
@@ -49,25 +51,6 @@ sigsq_sample <- function(sigsq, params, transforms, y, x, loglik, logprior, reje
 		rejections <- rejections + 1L
 	}
 	list(sigsq = sigsq, loglik = loglik, logprior = logprior, rejections = rejections)
-}
-
-uppermodel_sample <- function(y, x, priors) {
-	# ***  CHECK THIS AGAIN
-	nobs <- NROW(y)
-	nvar <- NCOL(x)
-	betabar <- priors$DeltaBar
-	nu <- priors$nu
-	ssq <- priors$ssq
-	RA <- chol(priors$A)
-	W <- rbind(x, RA)
-	z <- c(Data$y, as.vector(RA %*% priors$betabar))
-	IR <- backsolve(chol(crossprod(W)), diag(nvar))
-	btilde <- crossprod(t(IR)) %*% crossprod(W, z)
-	res <- z - W %*% btilde
-	s <- crossprod(res)
-	sigmasq <- with(priors, (nu * ssq + s) / rchisq(1, nu + nobs))
-	beta <- btilde + as.vector(sqrt(sigmasq)) * IR %*% rnorm(nvar)
-	list(beta = beta, sigmasq = sigmasq)
 }
 
 metropolis_sample <- function(params, paramName, paramIx, transforms, y, x, loglik, logprior, rejections, rwscale, sigsq, mu, Sigma) {
@@ -105,15 +88,26 @@ metropolis_sample <- function(params, paramName, paramIx, transforms, y, x, logl
 	list(params = params, loglik = loglik, logprior = logprior, rejections = rejections)
 }
 
+#' @title Hierarchical Bayesian Estimation of the Trial Model
+#' 
+#' @description
+#' Fits a hierarchical bayesian trial model
+#' @param Data is a list with components yList, xList, and z. yList and xList are lists of vectors and matrices respectively, representing the dependent variable and the covariates. Each element of the list represents a group in the lower level of the hierarchical model. z is a matrix of covariates for the upper level of the hierarchy.
+#' @param Priors is a list with components Deltabar, A, nu, V, sigsq_mean, and sigsq_sd. The components Deltabar, A, nu, and V are parameters of the hyperprior in the multivariate regression for the upper level model (LINK TO bayesm::rmultireg). sigsq_mean and sigsq_sd represent the mean and standard deviation of the univariate normal prior on the log of the variance of the observation error term (sigma^2). 
+#' @param Mcmc is a list with starting values of model parameters, scaling parameters for the Random Walk Metropolis algorithm, and options controlling various aspects of the MCMC sampler. The following are components of the Mcmc list: 
+#' @return A list of lists with components param_samples, prior_samples, rejections, loglikelihood, logprior. param_samples is a list of arrays/matrices storing samples of parameters from the lower model. prior_samples is a list of arrays/matrices storing parameters from the upper model. loglikelihood is a matrix of log likelihood values. logprior is a list of matrices storing the log priors for lower model parameters. 
+#'
+#'
+#' @export
 hb_trialmodel <- function(Data, Priors, Mcmc) {
 	# 
 	# Data is a list with the following components
-	# 	yList list of vectors. Each vector is the cumulative trial for one group
-	# 	xList list of matrices. Each matrix is the covariates for one group
+	# 	yList list of dependent variable vector
+	# 	xList list of covariate matrices
 	# 	z is matrix of upper model covariates
 	#
 	# Priors is a list of prior parameters
-	#	DeltaBar prior parameter for Delta
+	#	Deltabar prior parameter for Delta
 	#	A prior parameter for Delta
 	#	nu prior parameter for Sigma
 	#	V prior parameter for Sigma
@@ -169,17 +163,17 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	tmSpec <- list(family = "exponential-gamma", p0 = FALSE, numCovariates = NCOL(Data$xList[[1]])) # HARD CODED FOR NOW. NEEDS TO BE AN INPUT
 	# Generate functions that are used to transform the parameters while computing likelihood
 	paramTransforms <- generate_transforms(tmSpec)
+	paramIx <- generate_vec_splitter(tmSpec)(seq(numPars))
 
 	paramsList <- Mcmc$paramsList
 	sigsq <- Mcmc$sigsq
 
 	loglik <- mapply(loglik_nls, paramsList, Data$yList, Data$xList, MoreArgs = list(sigsq = Mcmc$sigsq, transforms = paramTransforms))
-	# **** need to provide a more general way of getting paramIx given model spec
 	mu <- Data$z %*% Mcmc$Delta
 	Sigma <- Mcmc$Sigma
-	r_logprior <- lapply(paramsList, logprior_normal, paramName = "r", paramIx = 1L, mu = mu, Sigma = Mcmc$Sigma)
-	alpha_logprior <- lapply(paramsList, logprior_normal, paramName = "alpha", paramIx = 2L, mu = mu, Sigma = Sigma)
-	beta_logprior <- lapply(paramsList, logprior_normal, paramName = "beta", paramIx = 3L:(numCovariates + 2L), mu = mu, Sigma = Sigma)
+	r_logprior <- lapply(paramsList, logprior_normal, paramName = "r", paramIx = paramIx$r, mu = mu, Sigma = Mcmc$Sigma)
+	alpha_logprior <- lapply(paramsList, logprior_normal, paramName = "alpha", paramIx = paramIx$alpha, mu = mu, Sigma = Sigma)
+	beta_logprior <- lapply(paramsList, logprior_normal, paramName = "beta", paramIx = paramIx$beta, mu = mu, Sigma = Sigma)
 
 	# Initialize rejection counters
 	r_rejections <- alpha_rejections <- beta_rejections <- rep(0, numGroups)
@@ -201,9 +195,10 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 
 	save_iter <- 0L
 	for (iter in seq(numIter)) {
+		cat("Starting burn-in phase ...", fill = TRUE)
 		# Sample r
 		r_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, r_logprior, r_rejections,
-						  MoreArgs = list(paramName = "r", paramIx = 1L, sigsq = sigsq, rwscale = Mcmc$rscale, mu = mu, Sigma = Sigma))
+						  MoreArgs = list(paramName = "r", paramIx = paramIx$r, sigsq = sigsq, rwscale = Mcmc$rscale, mu = mu, Sigma = Sigma))
 		paramsList <- lapply(r_mhres, "[[", i = "params")
 		loglik <- sapply(r_mhres, "[[", i = "loglik")
 		r_logprior <- sapply(r_mhres, "[[", i = "logprior")
@@ -211,14 +206,14 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 
 		# Sample alpha
 		alpha_mhres <- mapply(metropolis_sample, paramsList, yList, xList, loglik, alpha_logprior, alpha_rejections,
-							  MoreArgs = list(paramName = "alpha", paramIx = 2L, sigsq = sigsq, rwscale = Mcmc$alphascale, mu = mu, Sigma = Sigma))
+							  MoreArgs = list(paramName = "alpha", paramIx = paramIx$alpha, sigsq = sigsq, rwscale = Mcmc$alphascale, mu = mu, Sigma = Sigma))
 		loglik <- sapply(alpha_mhres, "[[", i = "loglik")
 		alpha_logprior <- sapply(alpha_mhres, "[[", i = "logprior")
 		alpha_rejections <- sapply(alpha_mhres, "[[", i = "rejections")
 
 		# Sample beta
 		beta_mhres <- mapply(metropolis_sample, paramsList, yList, xList, loglik, beta_logprior, beta_rejections, 
-							 MoreArgs = list(paramName = "beta", paramIx = 3L:(numCovariates + 2L), sigsq = sigsq, rwscale = Mcmc$betascale, mu = mu, Sigma = Sigma))
+							 MoreArgs = list(paramName = "beta", paramIx = paramIx$beta, sigsq = sigsq, rwscale = Mcmc$betascale, mu = mu, Sigma = Sigma))
 		loglik <- sapply(beta_mhres, "[[", i = "loglik")
 		beta_logprior <- sapply(beta_mhres, "[[", i = "logprior")
 		beta_rejections <- sapply(beta_mhres, "[[", i = "rejections")
@@ -231,8 +226,9 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 
 		# Sample upper model parameters (Delta, Sigma)
 		paramsMatrix <- do.call("rbind", unlist(paramsList))
-		upper_res <- uppermodel_sample(paramsMatrix, Data$z, Priors)
-		mu <- upper_res$mu
+		upper_res <- rmultireg(paramsMatrix, z, Priors$Deltabar, Priors$A, Priors$nu, Priors$V)
+		Delta <- upper_res$B
+		mu <- z %*% Delta
 		Sigma <- upper_res$Sigma
 
 		# Print diagnostics
@@ -244,15 +240,18 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 						   "r", mean(100 * r_rejections / numIter), 
 						   "alpha", mean(100 * alpha_rejections / numIter), 
 						   "beta", mean(100 * beta_rejections / numIter))
-			cat(msg, fill = TRUE)			
+			cat(msg, fill = TRUE)
+			linesep()
 		}
+		# Save
+		if (iter > burn) cat("Burn-in Done. Starting sampling ...", fill = TRUE)
 		if (iter > burn && (iter - burn) %% thin == 0L) {
 			save_iter <- save_iter + 1L
-			param_samples$r[save_iter,] <- sapply(paramsList, "[[", i = "r")
-			param_samples$alpha[save_iter,] <- sapply(paramsList, "[[", i = "alpha")
-			param_samples$beta[save_iter,,] <- do.call("rbind", lapply(paramsList, "[[", i = "beta"))
-			prior_samples$Delta[save_iter,,] <- NA # FIX ME
-			prior_samples$Sigma[save_iter,,] <- NA # FIX ME
+			params_samples$r[save_iter,] <- sapply(paramsList, "[[", i = "r")
+			params_samples$alpha[save_iter,] <- sapply(paramsList, "[[", i = "alpha")
+			params_samples$beta[save_iter,,] <- do.call("rbind", lapply(paramsList, "[[", i = "beta"))
+			prior_samples$Delta[save_iter,,] <- Delta
+			prior_samples$Sigma[save_iter,,] <- Sigma
 			rejections$r[save_iter,] <- r_rejections
 			rejections$alpha[save_iter,] <- alpha_rejections
 			rejections$beta[save_iter,] <- beta_rejections
@@ -262,7 +261,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 			logprior$beta[save_iter,] <- beta_logprior
 		}
 	}
-	list(param_samples = param_samples, prior_samples = prior_samples, rejections = rejections, loglikelihood = loglikelihood, logprior = logprior)
+	list(params_samples = params_samples, prior_samples = prior_samples, rejections = rejections, loglikelihood = loglikelihood, logprior = logprior)
 }
 
 # All code below this is deprecated for now

@@ -9,11 +9,22 @@ Description: Package to estimate trial-repeat models for new product forecasting
 Depends:
     R (>= 3.0.0),
     data.table,
-	parallel,
-    snowfall
+    parallel,
+    snowfall,
 License: GPL (>= 2)
 Collate:
     'newprodforecast-package.r'
     'utils.r'
     'trial-estimation.r'
-    'trial-fit.r'
+    'bayesian-trial-estimation.r'
+    'coefficients.r'
+    'controls.r'
+    'cumulative-curve.r'
+    'lsq.r'
+    'mle.r'
+    'model-fit.r'
+    'model-spec.r'
+    'param-transform.r'
+    'print.r'
+    'repeat-estimation.r'
+    'start.r'
