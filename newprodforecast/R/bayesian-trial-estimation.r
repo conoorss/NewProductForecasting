@@ -1,12 +1,23 @@
 #
 #
 
-get_xy <- function(data, groupvars, yvar, xvars) {
+#' @title Convenience function to create data inputs for Hierarchical Bayesian trial model
+#'
+#' @description
+#' Splits an input data.frame or data.table by a group variable and returns a list with two components ylist and xlist containing the dependent variable and covariates for each group respectively
+#' @param data a data.frame or data.table containing the relevant variables
+#' @param groupvar is a string that specifies the name of the group variable
+#' @param yvar is a string that specifies the name of the dependent variable
+#' @parma xvar is a character vector specifying the covariates
+#'
+#' @return A list with two components ylist and xlist which are lists containing group-level vectors/matrices of the dependent variable and covariates respectively
+
+get_xylist <- function(data, groupvar, yvar, xvars) {
 	data <- as.data.table(data)
-	y <- split(data[, yvar, with = FALSE], data[, groupvars, with = FALSE])
-	x <- split(data[, xvars, with = FALSE], data[, groupvars, with = FALSE])
+	y <- split(data[, yvar, with = FALSE], data[, groupvar, with = FALSE])
+	x <- split(data[, xvars, with = FALSE], data[, groupvar, with = FALSE])
 	x <- lapply(x, as.matrix)
-	list(yList = y, xList = x)
+	list(ylist = y, xlist = x)
 }
 
 
@@ -111,67 +122,25 @@ metropolis_sample <- function(params, paramName, paramIx, transforms, y, x, logl
 #' 
 #' @description
 #' Fits a hierarchical bayesian trial model
-#' @param Data is a list with components yList, xList, and z. yList and xList are lists of vectors and matrices respectively, representing the dependent variable and the covariates. Each element of the list represents a group in the lower level of the hierarchical model. z is a matrix of covariates for the upper level of the hierarchy.
-#' @param Priors is a list with components Deltabar, A, nu, V, sigsq_mean, and sigsq_sd. The components Deltabar, A, nu, and V are parameters of the hyperprior in the multivariate regression for the upper level model (LINK TO bayesm::rmultireg). sigsq_mean and sigsq_sd represent the mean and standard deviation of the univariate normal prior on the log of the variance of the observation error term (sigma^2). 
-#' @param Mcmc is a list with starting values of model parameters, scaling parameters for the Random Walk Metropolis algorithm, and options controlling various aspects of the MCMC sampler. The following are components of the Mcmc list: 
-#' @return A list of lists with components param_samples, prior_samples, rejections, loglikelihood, logprior. param_samples is a list of arrays/matrices storing samples of parameters from the lower model. prior_samples is a list of arrays/matrices storing parameters from the upper model. loglikelihood is a matrix of log likelihood values. logprior is a list of matrices storing the log priors for lower model parameters. 
+#' @param Data a list with components ylist, xlist, and z. ylist and xlist are lists of vectors and matrices respectively, representing the dependent variable and the covariates. Each element of the list represents a group in the lower level of the hierarchical model. z is a matrix of covariates for the upper level of the hierarchy.
+#' @param Priors a list with components Deltabar, A, nu, V, sigsq_mean, and sigsq_sd. The components Deltabar, A, nu, and V are parameters of the hyperprior in the multivariate regression for the upper level model (LINK TO bayesm::rmultireg). sigsq_mean and sigsq_sd represent the mean and standard deviation of the univariate normal prior on the log of the variance of the observation error term (sigma^2). 
+#' @param Mcmc a list with starting values of model parameters, scaling parameters for the Random Walk Metropolis algorithm, and options controlling various aspects of the MCMC sampler. 
+#' The components of Mcmc are as follows:
+#' paramsList: a list of lists. Each sublist is a named list of unconstrained parameters 
+#' sigsq: is a scalar representing the log of the variance of the error term
+#' Delta: is a matrix of parameters for the mean of the multivariate normal prior distribution. (TODO: Add reference to Rossi, Allenby, McCulloch)
+#' Sigma: is the covariance matrix for the multivariate normal prior distribution
+#' rscale, alphascale, betascale, sigsqscale: are scale parameters for the random walk Metropolis for (unconstrained) parameters r, alpha, beta, and log(sigma^2) respectively
+#' burn: is the number of burnin iterations prior to sampling
+#' samples: is the number of iterations during the sampling phase
+#' thin: controls the frequency at which samples are stored
+#' printThin: controls the frequency of printing diagnostic information
 #'
+#' @return A list of lists with components param_samples, prior_samples, rejections, loglikelihood, logprior. param_samples is a list of arrays/matrices storing samples of parameters from the lower model. prior_samples is a list of arrays/matrices storing parameters from the upper model. loglikelihood is a matrix of log likelihood values. logprior is a list of matrices storing the log priors for lower model parameters. 
 #'
 #' @export
 hb_trialmodel <- function(Data, Priors, Mcmc) {
-	# 
-	# Data is a list with the following components
-	# 	yList list of dependent variable vector
-	# 	xList list of covariate matrices
-	# 	z is matrix of upper model covariates
-	#
-	# Priors is a list of prior parameters
-	#	Deltabar prior parameter for Delta
-	#	A prior parameter for Delta
-	#	nu prior parameter for Sigma
-	#	V prior parameter for Sigma
-	#	sigsq_mean prior parameter for sigsq
-	#	sigsq_sd parameter for sigsq
-	#
-	# Mcmc is a list of Mcmc parameters
-	# 	The following elements are starting values
-	#		paramsList list of named lists. Each named list contains group-level unconstrained parameters
-	#		sigsq is a scalar (NOTE: this is the log of error variance)
-	#		Delta is a matrix
-	#		Sigma is a matrix
-	#	The following elements are random walk scaling parameters
-	#		rscale
-	#		alphascale
-	#		betascale	
-	#		sigsqscale
-	#	The following elements are options for length of run, printing and saving
-	#		burn
-	#		samples
-	#		thin
-	#		printThin
-	#
-	#
-	# Return value is a list with the following components
-	#	params_samples is a list with components:
-	#		r 		- matrix of samples x groups
-	#		alpha 	- matrix of samples x groups
-	#		beta 	- array of samples x groups x covariates			
-	#		sigsq	- vector
-	#	NOTE: ALL PARAMETERS ARE REPORTED UNTRANSFORMED
-	#	prior_samples is a list with components:
-	#		Delta 	- array of samples x upper covariates x lower parameters
-	#		Sigma 	- array of samples x upper covariates x upper covariates
-	#	rejections is a list with components
-	#		r 		- matrix of samples x groups
-	#		alpha 	- matrix of samples x groups
-	#		beta 	- matrix of samples x groups
-	#	loglikelihood is matrix of samples x groups
-	#	logprior is a list with components
-	#		r 		- matrix of samples x groups
-	#		alpha	- matrix of samples x groups
-	#		beta	- matrix of samples x groups
-
-	numGroups <- length(Data$yList)
+	numGroups <- length(Data$ylist)
 	numPars <- length(unlist(Mcmc$paramsList[[1]]))
 	numCovariates <- length(Mcmc$paramsList[[1]]$beta)
 	numUpperCovariates <- NCOL(Data$z)
@@ -179,7 +148,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	numSaved <- Mcmc$samples %/% Mcmc$thin
 
 	# Define model specification (Needed for generating parameter transformations)
-	tmSpec <- list(family = "exponential-gamma", p0 = FALSE, numCovariates = NCOL(Data$xList[[1]])) # HARD CODED FOR NOW. NEEDS TO BE AN INPUT
+	tmSpec <- list(family = "exponential-gamma", p0 = FALSE, numCovariates = NCOL(Data$xlist[[1]])) # HARD CODED FOR NOW. NEEDS TO BE AN INPUT
 	# Generate functions that are used to transform the parameters while computing likelihood
 	paramTransforms <- generate_transforms(tmSpec)
 	paramIx <- generate_vec_splitter(tmSpec)(seq(numPars))
@@ -187,7 +156,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	paramsList <- Mcmc$paramsList
 	sigsq <- Mcmc$sigsq
 
-	loglik <- mapply(loglik_nls, paramsList, Data$yList, Data$xList, 
+	loglik <- mapply(loglik_nls, paramsList, Data$ylist, Data$xlist, 
 					 MoreArgs = list(sigsq = Mcmc$sigsq, transforms = paramTransforms))
 	mu <- Data$z %*% Mcmc$Delta
 	muList <- split(mu, seq(numGroups))
@@ -223,7 +192,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	cat("Starting burn-in phase ...", fill = TRUE)
 	for (iter in seq(numIter)) {		
 		# Sample r
-		r_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, r_logprior, r_rejections, muList,
+		r_mhres <- mapply(metropolis_sample, paramsList, Data$ylist, Data$xlist, loglik, r_logprior, r_rejections, muList,
 						  MoreArgs = list(paramName = "r", transforms = paramTransforms, paramIx = paramIx$r, sigsq = sigsq, 
                                           rwscale = Mcmc$rscale, Sigma = Sigma), SIMPLIFY = FALSE)
 		paramsList <- lapply(r_mhres, "[[", i = "params")
@@ -232,7 +201,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 		r_rejections <- sapply(r_mhres, "[[", i = "rejections")
 
 		# Sample alpha
-		alpha_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, alpha_logprior, alpha_rejections, muList,
+		alpha_mhres <- mapply(metropolis_sample, paramsList, Data$ylist, Data$xlist, loglik, alpha_logprior, alpha_rejections, muList,
 							  MoreArgs = list(paramName = "alpha", transforms = paramTransforms, paramIx = paramIx$alpha, sigsq = sigsq, 
                                               rwscale = Mcmc$alphascale, Sigma = Sigma), SIMPLIFY = FALSE)
 		paramsList <- lapply(alpha_mhres, "[[", i = "params")
@@ -241,7 +210,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 		alpha_rejections <- sapply(alpha_mhres, "[[", i = "rejections")
 
 		# Sample beta
-		beta_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, beta_logprior, beta_rejections, muList,
+		beta_mhres <- mapply(metropolis_sample, paramsList, Data$ylist, Data$xlist, loglik, beta_logprior, beta_rejections, muList,
 							 MoreArgs = list(paramName = "beta", transforms = paramTransforms, paramIx = paramIx$beta, sigsq = sigsq, 
                                              rwscale = Mcmc$betascale, Sigma = Sigma), SIMPLIFY = FALSE)
 		paramsList <- lapply(beta_mhres, "[[", i = "params")
@@ -250,7 +219,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 		beta_rejections <- sapply(beta_mhres, "[[", i = "rejections")
 
 		# Sample sigsq
-		sigsq_mhres <- sigsq_sample(sigsq, paramsList, paramTransforms, Data$yList, Data$xList, loglik, sigsq_logprior, 
+		sigsq_mhres <- sigsq_sample(sigsq, paramsList, paramTransforms, Data$ylist, Data$xlist, loglik, sigsq_logprior, 
                                     sigsq_rejections, Mcmc$sigsqscale, Priors$sigsq_mean, Priors$sigsq_sd)
         sigsq <- sigsq_mhres$sigsq
 		loglik <- sigsq_mhres$loglik

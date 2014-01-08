@@ -28,7 +28,7 @@ mle_trialmodel <- function(dat, mfcall, startvals, tmSpec, method, optimControl)
 	res <- try(optim(startvals, call_loglik, method = method, control = optimControl), silent = TRUE)
 	if (inherits(res, "try-error")) {
 		coef <- list()
-		residuals <- pred <- mape <- numeric()
+		err <- pred <- mape <- numeric()
 	} else {
 		coef <- splitFun(res$par)
 		coef <- apply_transforms(coef, transFuns)

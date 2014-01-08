@@ -2,8 +2,11 @@
 data("trial-model-input-120313-01")
 load_all()
 uupcs <- model.upc.exp[, unique(UPC)]
+
+#limit <- length(uupcs)
+limit <- 13
 testdata1 <- model.upc.exp[UPC %in% uupcs[1]]
-testdata2 <- model.upc.exp[UPC %in% uupcs[1:10]]
+testdata2 <- model.upc.exp[UPC %in% uupcs[limit]]
 testdata2 <- na.omit(testdata2)
 
 # Run MLE to get starting points
@@ -23,7 +26,7 @@ Sigma <- diag(3)
 sigsq <- log(var(do.call("c", lapply(mle1$estimates, "[[", i = "residuals"))))
 
 
-Data <- get_xy(testdata2, "UPC", "ObsTrialPct", "ACV.MultiOutlet")
+Data <- get_xylist(testdata2, "UPC", "ObsTrialPct", "ACV.MultiOutlet")
 Data$z <- matrix(1, length(paramsList), 1)
 
 numCovariates <- NCOL(Data$x[[1]])
@@ -40,7 +43,7 @@ Mcmc <- list(paramsList = paramsList,
 			 sigsq = sigsq, 
 			 Delta = Delta, 
 			 Sigma = Sigma, 
-			 rscale = 0.01, alphascale = 0.01, betascale = 0.01, sisqscale = 0.01, 
-			 burn = 1000, samples = 0, thin = 1, printThin = 10)
+			 rscale = 1.0, alphascale = 1.0, betascale = 1.0, sisqscale = 1.5, 
+			 burn = 100, samples = 0, thin = 1, printThin = 10)
 
 res <- hb_trialmodel(Data, Priors, Mcmc)
