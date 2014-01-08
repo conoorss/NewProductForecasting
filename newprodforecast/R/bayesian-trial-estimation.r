@@ -71,6 +71,7 @@ sigsq_sample <- function(sigsq, params, transforms, y, x, loglik, logprior, reje
 		sigsq <- sigsqProp
 		loglik <- loglikProp
 		logprior <- logpriorProp
+	} else {
 		rejections <- rejections + 1L
 	}
 	list(sigsq = sigsq, loglik = loglik, logprior = logprior, rejections = rejections)
@@ -113,6 +114,7 @@ metropolis_sample <- function(params, paramName, paramIx, transforms, y, x, logl
 		params <- paramsProp
 		loglik <- loglikProp
 		logprior <- logpriorProp
+	} else {
 		rejections <- rejections + 1L
 	}
 	list(params = params, loglik = loglik, logprior = logprior, rejections = rejections)
