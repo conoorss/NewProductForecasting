@@ -20,7 +20,7 @@ mle_trialmodel <- function(dat, mfcall, startvals, tmSpec, method, optimControl)
 	call_loglik <- function(params) {	  
 		#print(params)
 		params <- splitFun(params)
-		params <- mapply(function(x, fun) fun(x), params, transFuns, SIMPLIFY = FALSE)
+		params <- apply_transforms(params, transFuns)
 		loglik_trialmodel(params, incy, x, acv)
 	}
 	#res <- try(optim(startvals, loglik_trialmodel, y = y, x = x, acv = acv, tmSpec = tmSpec, method = method, control = optimControl), silent = TRUE)
@@ -31,7 +31,7 @@ mle_trialmodel <- function(dat, mfcall, startvals, tmSpec, method, optimControl)
 		residuals <- pred <- mape <- numeric()
 	} else {
 		coef <- splitFun(res$par)
-		coef <- mapply(function(x, fun) fun(x), coef, transFuns, SIMPLIFY = FALSE)
+		coef <- apply_transforms(coef, transFuns)
 		pred <- fit_trialmodel(coef, y, x, acv)
 		err <- pred - y
 		mape <- median(abs(err) / y)

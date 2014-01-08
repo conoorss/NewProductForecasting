@@ -10,22 +10,46 @@ generate_vec_splitter <- function(spec) {
 	splitvec <- ordered(splitvec, labels = labs)
 
 	#names(splitvec) <- nms
-	function(x) if (length(x) != length(splitvec)) stop("Length mismatch in splitter") else split(x, splitvec)
+	function(x) if (length(x) != length(splitvec)) stop("Length mismatch in splitter") else as.relistable(split(x, splitvec))
 }
 
-if (0) {
-calculate_param_ix <- function(spec) {
-	# Returns the indices of each parameter in the atomic version of the list
-}
-}
+generate_transforms <- function(spec, reverse = FALSE) {
+	# spec is a list of options for the model specification
+	# reverse if TRUE tranform from constrained to unconstrained
 
-generate_transforms <- function(spec) {
-	tfunc <- if (spec$p0) list(p0 = invlogit) else list()
-	tfunc <- if (!is.null(spec$acvMultiplier)) c(tfunc, list(gamma = exp)) else tfunc
-	tfunc <- c(tfunc, switch(spec$family, "exponential" = list(lambda = exp), "exponential-gamma" = list(r = exp, alpha = exp), stop("Invalid family in model specification")))
-	tfunc <- if (spec$numCovariates > 0L) c(tfunc, list(beta = exp)) else tfunc
+	transforms <- if (!reverse) list(p0 = invlogit, lambda = exp, r = exp, alpha = exp, beta = exp) else list(p0 = logit, lambda = log, r = log, alpha = log, beta = log)
+
+	nms <- if (spec$p0) "p0" else character()
+	nms <- if (!is.null(spec$acvMultiplier)) c(nms, "gamma") else nms
+	nms <- c(nms, switch(spec$family, "exponential" = "lambda", "exponential-gamma" = c("r", "alpha"), stop("Invalid family in model specification")))
+	nms <- if (spec$numCovariates > 0L) c(nms, "beta") else nms
+
+	m <- match(nms, names(transforms))
+	return(transforms[m])
+
+	if (FALSE) {
+	if (!reverse) {
+		tfunc <- if (spec$p0) list(p0 = invlogit) else list()
+		tfunc <- if (!is.null(spec$acvMultiplier)) c(tfunc, list(gamma = exp)) else tfunc
+		tfunc <- c(tfunc, switch(spec$family, "exponential" = list(lambda = exp), "exponential-gamma" = list(r = exp, alpha = exp), stop("Invalid family in model specification")))
+		tfunc <- if (spec$numCovariates > 0L) c(tfunc, list(beta = exp)) else tfunc
+	} else {
+		tfunc <- if (spec$p0) list(p0 = logit) else list()
+		tfunc <- if (!is.null(spec$acvMultiplier)) c(tfunc, list(gamma = log)) else tfunc
+		tfunc <- c(tfunc, switch(spec$family, "exponential" = list(lambda = log), "exponential-gamma" = list(r = log, alpha = log), stop("Invalid family in model specification")))
+		tfunc <- if (spec$numCovariates > 0L) c(tfunc, list(beta = log)) else tfunc
+	}
 	tfunc
+	}
 }
+
+apply_transforms <- function(lst, funs, ...) {
+	oclass <- class(lst)
+	output <- mapply(function(x, f) f(x), lst, funs, ..., SIMPLIFY = FALSE)
+	structure(output, class = oclass)
+}
+
+
 
 if(0){
 

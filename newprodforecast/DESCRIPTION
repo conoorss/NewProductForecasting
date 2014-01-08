@@ -11,6 +11,8 @@ Depends:
     data.table,
     parallel,
     snowfall,
+    mvtnorm,
+    bayesm,
 License: GPL (>= 2)
 Collate:
     'newprodforecast-package.r'

@@ -1,7 +1,16 @@
 #
 #
 
-loglik_nls <- function(params, tranforms, sigsq, y, x) {
+get_xy <- function(data, groupvars, yvar, xvars) {
+	data <- as.data.table(data)
+	y <- split(data[, yvar, with = FALSE], data[, groupvars, with = FALSE])
+	x <- split(data[, xvars, with = FALSE], data[, groupvars, with = FALSE])
+	x <- lapply(x, as.matrix)
+	list(yList = y, xList = x)
+}
+
+
+loglik_nls <- function(params, y, x, transforms, sigsq) {
 	# Likelihood for the nonlinear regression y = zeta(x, params) + epsilon; epsilon ~ N(0, sigsq)
 	# zeta is a nonlinear function of parameters and covariates
 	# The call to cumulative_curve computes zeta
@@ -12,31 +21,34 @@ loglik_nls <- function(params, tranforms, sigsq, y, x) {
 	# x is a numeric matrix
 
 	sigsq <- exp(sigsq)
-	params <- mapply(function(x, fun) fun(x), params, transforms)
+	params <- apply_transforms(params, transforms)
 	predictor <- if (!is.null(params$beta)) drop(exp(x %*% params$beta)) else rep(1, NROW(x))
 	predictor <- cumsum(predictor)
 	tpredictor <- cumulative_curve(params, predictor, acv = 1)	
-	-sum((y - tpredictor)^2) / (2 * exp(sigsq))
-	dnorm(y, mean = tpredictor, sd = sqrt(sigsq), log = TRUE)
+	sum(dnorm(y, mean = tpredictor, sd = sqrt(sigsq), log = TRUE))
 }
 
-logprior_normal <- function(params, paramName, paramIx, mu, Sigma) { 
-	# Calculate the conditional normal density for the component given by paramName
-	# params is a named list of unconstrained parameters
-	# paramName is a string
-	# paramIx is an integer vector representing the indices of the component paramName in the atomic version of param (i.e., unlist(param))
+logprior_normal <- function(params, paramIx, mu, Sigma) { 
+	# Calculate the conditional normal density for a partitioned Multivariate Normal distribution
+	# params is a named list of unconstrained parameters which are ~ MVN(mu, Sigma)
+	# paramIx is an integer vector of indices of the subvector whose conditional density is required
 	# mu is numeric vector
 	# Sigma is a numeric Matrix
-	x <- params[[paramName]]
+	x <- unlist(params)
+	x2 <- x[paramIx]
+	x1 <- x[-paramIx]
+	mu2 <- mu[paramIx]
+	mu1 <- mu[-paramIx]
 	mat1 <- Sigma[paramIx, -paramIx, drop = FALSE] %*% chol2inv(chol(Sigma[-paramIx, -paramIx, drop = FALSE]))
-	mu_x <- mu[paramIx] - mat1 %*% (x - mu[-paramIx])
-	Sigma_x <- Sigma[paramIx, paramIx, drop = FALSE] - mat1 %*% Sigma[-paramIx, paramIx, drop = FALSE]
-	dmvnorm(x, mu_x, Sigma_x, log = TRUE)	
+    # Conditional mean and variance
+	mu_2_1 <- mu2 - mat1 %*% as.matrix(x1 - mu1)
+	Sigma_2_1 <- Sigma[paramIx, paramIx, drop = FALSE] - mat1 %*% Sigma[-paramIx, paramIx, drop = FALSE]
+	dmvnorm(x2, mu_2_1, Sigma_2_1, log = TRUE)
 }
 
 sigsq_sample <- function(sigsq, params, transforms, y, x, loglik, logprior, rejections, rwscale, sigsq_mean, sigsq_sd) {
 	sigsqProp <- sigsq + rwscale * rnorm(1)          # NOTE: sigsq is the log of sigma^2 (error variance)
-	loglikProp <- loglik_nls(params, transforms, sigsqProp, y, x)
+	loglikProp <- mapply(loglik_nls, params, y, x, MoreArgs = list(sigsq = sigsq, transforms = transforms))
 	logpriorProp <- dnorm(sigsqProp, sigsq_mean, sigsq_sd, log = TRUE)
 	posteriorRatio <- exp(sum(loglikProp) + logpriorProp - sum(loglik) - logprior)
 
@@ -68,11 +80,18 @@ metropolis_sample <- function(params, paramName, paramIx, transforms, y, x, logl
 	# mu is a numeric vector
 	# Sigma is a numeric matrix
 
-	paramsProp <- params
-	k <- length(params[[paramName]])
-	paramsProp[[paramName]] <- params[[paramName]] + rwscale * rnorm(k)
-	loglikProp <- loglik_nls(paramsProp, transforms, sigsq, y, x)
-	logpriorProp <- logprior_normal(params, paramName, paramIx, mu, Sigma)
+	if (!is.relistable(params))
+		stop("params must be a relistable object")
+
+	paramsProp <- unlist(params)
+	paramsProp[paramIx] <- paramsProp[paramIx] + rwscale * rnorm(length(paramIx))
+	paramsProp <- relist(paramsProp)
+	
+	#paramsProp <- params
+	#k <- length(params[[paramName]])
+	#paramsProp[[paramName]] <- params[[paramName]] + rwscale * rnorm(k)
+	loglikProp <- loglik_nls(paramsProp, y, x, transforms, sigsq)
+	logpriorProp <- logprior_normal(paramsProp, paramIx, mu, Sigma)
 	posteriorRatio <- exp(loglikProp + logpriorProp - loglik - logprior)
 
 	msg <- sprintf("ll prop: %f\nlp prop: %f\nll: %f\nlp: %f\n", loglikProp, logpriorProp, loglik, logprior)
@@ -153,8 +172,8 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	#		beta	- matrix of samples x groups
 
 	numGroups <- length(Data$yList)
-	numPars <- length(unlist(Mcmc$paramList[[1]]))
-	numCovariates <- length(Mcmc$paramList[[1]]$beta)
+	numPars <- length(unlist(Mcmc$paramsList[[1]]))
+	numCovariates <- length(Mcmc$paramsList[[1]]$beta)
 	numUpperCovariates <- NCOL(Data$z)
 	numIter <- Mcmc$samples + Mcmc$burn
 	numSaved <- Mcmc$samples %/% Mcmc$thin
@@ -168,15 +187,21 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 	paramsList <- Mcmc$paramsList
 	sigsq <- Mcmc$sigsq
 
-	loglik <- mapply(loglik_nls, paramsList, Data$yList, Data$xList, MoreArgs = list(sigsq = Mcmc$sigsq, transforms = paramTransforms))
+	loglik <- mapply(loglik_nls, paramsList, Data$yList, Data$xList, 
+					 MoreArgs = list(sigsq = Mcmc$sigsq, transforms = paramTransforms))
 	mu <- Data$z %*% Mcmc$Delta
+	muList <- split(mu, seq(numGroups))
 	Sigma <- Mcmc$Sigma
-	r_logprior <- lapply(paramsList, logprior_normal, paramName = "r", paramIx = paramIx$r, mu = mu, Sigma = Mcmc$Sigma)
-	alpha_logprior <- lapply(paramsList, logprior_normal, paramName = "alpha", paramIx = paramIx$alpha, mu = mu, Sigma = Sigma)
-	beta_logprior <- lapply(paramsList, logprior_normal, paramName = "beta", paramIx = paramIx$beta, mu = mu, Sigma = Sigma)
+	r_logprior <- mapply(logprior_normal, paramsList, muList,
+						 MoreArgs = list(paramIx = paramIx$r, Sigma = Sigma))
+	alpha_logprior <- mapply(logprior_normal, paramsList, muList, 
+							 MoreArgs = list(paramIx = paramIx$alpha, Sigma = Sigma))
+	beta_logprior <- mapply(logprior_normal, paramsList, muList,
+							 MoreArgs = list(paramIx = paramIx$beta, Sigma = Sigma))
+    sigsq_logprior <- dnorm(sigsq, Priors$sigsq_mean, Priors$sigsq_sd, log = TRUE)
 
 	# Initialize rejection counters
-	r_rejections <- alpha_rejections <- beta_rejections <- rep(0, numGroups)
+	r_rejections <- alpha_rejections <- beta_rejections <- sigsq_rejections <- rep(0, numGroups)
 
 	# Initialize storage for outputs
 	params_samples <- list(r = matrix(NA, numSaved, numGroups),
@@ -184,7 +209,7 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 						   beta = array(NA, c(numSaved, numGroups, numCovariates)),
 						   sigsq = rep(NA, numSaved))
 	prior_samples <- list(Delta = array(NA, c(numSaved, numUpperCovariates, numPars)),
-						  Sigma = array(NA, c(numSaved, numUpperCovariates, numUpperCovariates)))
+						  Sigma = array(NA, c(numSaved, numPars, numPars)))
 	rejections <- list(r = matrix(NA, numSaved, numGroups),
 					   alpha = matrix(NA, numSaved, numGroups),
 					   beta = matrix(NA, numSaved, numGroups))
@@ -194,62 +219,82 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 					 beta = matrix(NA, numSaved, numGroups)) # Initialize storage for log prior
 
 	save_iter <- 0L
-	for (iter in seq(numIter)) {
-		cat("Starting burn-in phase ...", fill = TRUE)
+    start_time <- proc.time()[3]
+	cat("Starting burn-in phase ...", fill = TRUE)
+	for (iter in seq(numIter)) {		
 		# Sample r
-		r_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, r_logprior, r_rejections,
-						  MoreArgs = list(paramName = "r", paramIx = paramIx$r, sigsq = sigsq, rwscale = Mcmc$rscale, mu = mu, Sigma = Sigma))
+		r_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, r_logprior, r_rejections, muList,
+						  MoreArgs = list(paramName = "r", transforms = paramTransforms, paramIx = paramIx$r, sigsq = sigsq, 
+                                          rwscale = Mcmc$rscale, Sigma = Sigma), SIMPLIFY = FALSE)
 		paramsList <- lapply(r_mhres, "[[", i = "params")
 		loglik <- sapply(r_mhres, "[[", i = "loglik")
 		r_logprior <- sapply(r_mhres, "[[", i = "logprior")
 		r_rejections <- sapply(r_mhres, "[[", i = "rejections")
 
 		# Sample alpha
-		alpha_mhres <- mapply(metropolis_sample, paramsList, yList, xList, loglik, alpha_logprior, alpha_rejections,
-							  MoreArgs = list(paramName = "alpha", paramIx = paramIx$alpha, sigsq = sigsq, rwscale = Mcmc$alphascale, mu = mu, Sigma = Sigma))
-		loglik <- sapply(alpha_mhres, "[[", i = "loglik")
+		alpha_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, alpha_logprior, alpha_rejections, muList,
+							  MoreArgs = list(paramName = "alpha", transforms = paramTransforms, paramIx = paramIx$alpha, sigsq = sigsq, 
+                                              rwscale = Mcmc$alphascale, Sigma = Sigma), SIMPLIFY = FALSE)
+		paramsList <- lapply(alpha_mhres, "[[", i = "params")
+        loglik <- sapply(alpha_mhres, "[[", i = "loglik")
 		alpha_logprior <- sapply(alpha_mhres, "[[", i = "logprior")
 		alpha_rejections <- sapply(alpha_mhres, "[[", i = "rejections")
 
 		# Sample beta
-		beta_mhres <- mapply(metropolis_sample, paramsList, yList, xList, loglik, beta_logprior, beta_rejections, 
-							 MoreArgs = list(paramName = "beta", paramIx = paramIx$beta, sigsq = sigsq, rwscale = Mcmc$betascale, mu = mu, Sigma = Sigma))
+		beta_mhres <- mapply(metropolis_sample, paramsList, Data$yList, Data$xList, loglik, beta_logprior, beta_rejections, muList,
+							 MoreArgs = list(paramName = "beta", transforms = paramTransforms, paramIx = paramIx$beta, sigsq = sigsq, 
+                                             rwscale = Mcmc$betascale, Sigma = Sigma), SIMPLIFY = FALSE)
+		paramsList <- lapply(beta_mhres, "[[", i = "params")
 		loglik <- sapply(beta_mhres, "[[", i = "loglik")
 		beta_logprior <- sapply(beta_mhres, "[[", i = "logprior")
 		beta_rejections <- sapply(beta_mhres, "[[", i = "rejections")
 
 		# Sample sigsq
-		sigsq_mhres <- sigsq_sample(sigsq, )
-		loglik <- do.call("c", sigsq_mhres$loglik)
-		sigsq_logprior <- do.call("c", sigsq_mhres$logprior)
-		sigsq_rejections <- do.call("c", sigsq_mhres$rejections)
+		sigsq_mhres <- sigsq_sample(sigsq, paramsList, paramTransforms, Data$yList, Data$xList, loglik, sigsq_logprior, 
+                                    sigsq_rejections, Mcmc$sigsqscale, Priors$sigsq_mean, Priors$sigsq_sd)
+        sigsq <- sigsq_mhres$sigsq
+		loglik <- sigsq_mhres$loglik
+		sigsq_logprior <- sigsq_mhres$logprior
+		sigsq_rejections <- sigsq_mhres$rejections
 
 		# Sample upper model parameters (Delta, Sigma)
-		paramsMatrix <- do.call("rbind", unlist(paramsList))
-		upper_res <- rmultireg(paramsMatrix, z, Priors$Deltabar, Priors$A, Priors$nu, Priors$V)
+		paramsMatrix <- do.call("rbind", lapply(paramsList, unlist))
+		upper_res <- rmultireg(paramsMatrix, Data$z, Priors$Deltabar, Priors$A, Priors$nu, Priors$V)
 		Delta <- upper_res$B
-		mu <- z %*% Delta
+		mu <- Data$z %*% Delta
+		muList <- split(mu, seq(numGroups))
 		Sigma <- upper_res$Sigma
 
 		# Print diagnostics
-		if (iter %% Mcmc$printThin == 0) {
-			cat("Iterations:\t, iter, \n")
-			cat("Rejection Rates:\n")
-			rrfmt <- "%6s %.2f%%"
-			msg <- sprintf(paste(rep(rrfmt, 3), collapse = "\n"), 
-						   "r", mean(100 * r_rejections / numIter), 
-						   "alpha", mean(100 * alpha_rejections / numIter), 
-						   "beta", mean(100 * beta_rejections / numIter))
+		if (iter %% Mcmc$printThin == 0) {            
+            now <- proc.time()[3]
+            sumfuns <- list(min, median, mean, max)
+            fmt <- paste("%6s", paste(rep("%6.2f%%", length(sumfuns)), collapse = " "))
+            #print(fmt)            
+			cat("Iterations:", iter, round(now - start_time), " secs", fill = TRUE)
+			cat("Rejection Rates:", fill = TRUE)
+            cat(sprintf("%12s %7s %7s %7s", "Min", "Med", "Mean", "Max"), fill = TRUE)
+            msg <- do.call(sprintf, c(fmt, "r", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = r_rejections)))
 			cat(msg, fill = TRUE)
+            msg <- do.call(sprintf, c(fmt, "alpha", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = alpha_rejections)))
+            cat(msg, fill = TRUE)
+            msg <- do.call(sprintf, c(fmt, "beta", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = beta_rejections)))
+            cat(msg, fill = TRUE)
+            msg <- do.call(sprintf, c(fmt, "sigsq", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = sigsq_rejections)))
+            cat(msg, fill = TRUE)       
 			linesep()
 		}
 		# Save
-		if (iter > burn) cat("Burn-in Done. Starting sampling ...", fill = TRUE)
-		if (iter > burn && (iter - burn) %% thin == 0L) {
+		if (iter == (Mcmc$burn + 1L)) {
+            now <- proc.time()[3]
+            cat("Burn-in done in ", round(now - start_time), " secs. Starting sampling ...", fill = TRUE)
+		}
+		if (iter > Mcmc$burn && (iter - Mcmc$burn) %% Mcmc$thin == 0L) {
 			save_iter <- save_iter + 1L
 			params_samples$r[save_iter,] <- sapply(paramsList, "[[", i = "r")
 			params_samples$alpha[save_iter,] <- sapply(paramsList, "[[", i = "alpha")
 			params_samples$beta[save_iter,,] <- do.call("rbind", lapply(paramsList, "[[", i = "beta"))
+            params_samples$sigsq[save_iter] <- sigsq
 			prior_samples$Delta[save_iter,,] <- Delta
 			prior_samples$Sigma[save_iter,,] <- Sigma
 			rejections$r[save_iter,] <- r_rejections
@@ -261,7 +306,11 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 			logprior$beta[save_iter,] <- beta_logprior
 		}
 	}
-	list(params_samples = params_samples, prior_samples = prior_samples, rejections = rejections, loglikelihood = loglikelihood, logprior = logprior)
+	list(params_samples = params_samples, 
+         prior_samples = prior_samples, 
+         rejections = rejections, 
+         loglikelihood = loglikelihood, 
+         logprior = logprior)
 }
 
 # All code below this is deprecated for now

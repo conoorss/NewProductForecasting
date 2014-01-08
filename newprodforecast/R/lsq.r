@@ -18,7 +18,7 @@ ols_trialmodel <- function(dat, mfcall, startvals, tmSpec, method, optimControl)
 	call_sumsqerr <- function(params) {
 		#print(params)
 		params <- splitFun(params)
-		params <- mapply(function(x, fun) fun(x), params, transFuns, SIMPLIFY = FALSE)
+		params <- apply_transforms(params, transFuns)
 		sumsqerr_trialmodel(params, y, x, acv)
 	}
 	#res <- try(optim(startvals, sumsqerr_trialmodel, y = y, x = x, acv = acv, tmSpec = tmSpec, method = method, control = optimControl), silent = TRUE)
@@ -28,7 +28,7 @@ ols_trialmodel <- function(dat, mfcall, startvals, tmSpec, method, optimControl)
 		coef <- list()
 	} else {
 		coef <- splitFun(res$par)
-		coef <- mapply(function(x, fun) fun(x), coef, transFuns, SIMPLIFY = FALSE)
+		coef <- apply_transforms(coef, transFuns)
 		pred <- fit_trialmodel(coef, y, x, acv)
 		err <- pred - y
 		mape <- median(abs(err) / y)

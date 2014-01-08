@@ -24,3 +24,4 @@ test3 <- runTest(quote(trialmodel(ObsTrialPct ~ ACV.MultiOutlet, testdata1, esti
 test4 <- runTest(quote(trialmodel(ObsTrialPct ~ ACV.MultiOutlet, testdata1, estimation = "OLS")))
 test5 <- runTest(quote(trialmodel(ObsTrialPct ~ ACV.MultiOutlet, testdata2, "UPC", estimation = "MLE")))
 test6 <- runTest(quote(trialmodel(ObsTrialPct ~ ACV.MultiOutlet, testdata2, "UPC", estimation = "OLS")))
+
