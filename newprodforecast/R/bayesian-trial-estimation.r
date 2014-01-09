@@ -239,19 +239,21 @@ hb_trialmodel <- function(Data, Priors, Mcmc) {
 		# Print diagnostics
 		if (iter %% Mcmc$printThin == 0) {            
             now <- proc.time()[3]
+			elapsed <- now - start_time
+			remaining <- (numIter - iter) * elapsed / iter
             sumfuns <- list(min, median, mean, max)
             fmt <- paste("%6s", paste(rep("%6.2f%%", length(sumfuns)), collapse = " "))
             #print(fmt)            
-			cat("Iterations:", iter, round(now - start_time), " secs", fill = TRUE)
+			cat("Iterations:", iter, "\tElapsed:", round(elapsed), "secs", "\tRemaining:", round(remaining), "secs", fill = TRUE)
 			cat("Rejection Rates:", fill = TRUE)
             cat(sprintf("%12s %7s %7s %7s", "Min", "Med", "Mean", "Max"), fill = TRUE)
-            msg <- do.call(sprintf, c(fmt, "r", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = r_rejections)))
+            msg <- do.call(sprintf, c(fmt, "r", lapply(sumfuns, function(f, x) f(x) * 100 / iter, x = r_rejections)))
 			cat(msg, fill = TRUE)
-            msg <- do.call(sprintf, c(fmt, "alpha", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = alpha_rejections)))
+            msg <- do.call(sprintf, c(fmt, "alpha", lapply(sumfuns, function(f, x) f(x) * 100 / iter, x = alpha_rejections)))
             cat(msg, fill = TRUE)
-            msg <- do.call(sprintf, c(fmt, "beta", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = beta_rejections)))
+            msg <- do.call(sprintf, c(fmt, "beta", lapply(sumfuns, function(f, x) f(x) * 100 / iter, x = beta_rejections)))
             cat(msg, fill = TRUE)
-            msg <- do.call(sprintf, c(fmt, "sigsq", lapply(sumfuns, function(f, x) f(x) * 100 / numIter, x = sigsq_rejections)))
+            msg <- do.call(sprintf, c(fmt, "sigsq", lapply(sumfuns, function(f, x) f(x) * 100 / iter, x = sigsq_rejections)))
             cat(msg, fill = TRUE)       
 			linesep()
 		}

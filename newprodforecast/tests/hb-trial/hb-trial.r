@@ -1,4 +1,7 @@
 
+seed <- 1234
+set.seed(seed)
+
 data("trial-model-input-120313-01")
 load_all()
 uupcs <- model.upc.exp[, unique(UPC)]
@@ -38,6 +41,7 @@ Sigma <- diag(3)
 
 # Get initial estimate
 sigsq <- log(var(do.call("c", lapply(mle1$estimates, "[[", i = "residuals"))))
+#sigsq <- -5
 
 
 Data <- get_xylist(testdata2, "UPC", "ObsTrialPct", "ACV.MultiOutlet")
@@ -57,7 +61,25 @@ Mcmc <- list(paramsList = paramsList,
 			 sigsq = sigsq, 
 			 Delta = Delta, 
 			 Sigma = Sigma, 
-			 rscale = 1.0, alphascale = 1.0, betascale = 1.0, sigsqscale = 1.5, 
-			 burn = 100, samples = 0, thin = 1, printThin = 10)
+			 rscale = 0.5, alphascale = 0.5, betascale = 0.5, sigsqscale = 0.5, 
+			 burn = 1000, samples = 1000, thin = 10, printThin = 10)
 
-res <- hb_trialmodel(Data, Priors, Mcmc)
+hbSamples <- hb_trialmodel(Data, Priors, Mcmc)
+
+outfile <- paste0("hbtrial", gsub(" ", "_", Sys.time()), ".rdata")
+save(seed, mle1, hbSamples, file = file.path("tests", "hb-trial", outfile))
+
+if (0) {
+check_trace <- function(param, group) {
+	if (group < 1L || group > length(paramsList))
+		stop("Invalid group")
+
+	if (param %in% c("r", "alpha")) {
+		cat("TRUE VALUE: ", round(paramsList[[group]][[param]], 3), fill = TRUE)
+		plot(res$params_samples[[param]][, group], type = "l")
+		title(paste(param, group))
+	}
+}
+}
+
+
